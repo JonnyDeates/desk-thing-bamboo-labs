@@ -1,7 +1,7 @@
 {
   "name": "bamboo-labs-viewer",
   "private": true,
-  "version": "0.12.0",
+  "version": "0.13.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/JonnyDeates/desk-thing-bamboo-labs"
@@ -20,6 +20,7 @@
     "@deskthing/server": "latest",
     "autoprefixer": "^10.4.21",
     "mqtt": "^5.10.1",
+    "process": "^0.11.10",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
