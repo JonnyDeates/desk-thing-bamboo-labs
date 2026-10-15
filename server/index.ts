@@ -6,15 +6,20 @@ import mqtt, { MqttClient } from "mqtt";
 import { createDeskThing } from "@deskthing/server";
 import { DESKTHING_EVENTS, SETTING_TYPES } from "@deskthing/types";
 
+type PrintCommand = "pause" | "resume" | "stop";
+type PrintState = "idle" | "preparing" | "printing" | "paused" | "finished" | "failed" | "unknown";
+
 type ToServerEvent =
   | { type: "request_frame" }
   | { type: "start_feed" }
   | { type: "stop_feed" }
-  | { type: "set_light"; payload: { on: boolean } };
+  | { type: "set_light"; payload: { on: boolean } }
+  | { type: "set_print_state"; payload: { command: PrintCommand } };
 type ToClientEvent =
   | { type: "frame"; payload: string }
   | { type: "status"; payload: { connected: boolean; message: string } }
-  | { type: "light_state"; payload: { on: boolean; available: boolean } };
+  | { type: "light_state"; payload: { on: boolean; available: boolean } }
+  | { type: "print_state"; payload: { state: PrintState; available: boolean } };
 
 const DeskThing = createDeskThing<ToServerEvent, ToClientEvent>();
 
@@ -116,6 +121,8 @@ let mqttClient: MqttClient | null = null;
 let printerSerial: string | null = null;
 let lightOn = false;
 let lightKnown = false;
+let printState: PrintState = "unknown";
+let printStateKnown = false;
 let sequenceId = 0;
 
 function sendLightState() {
@@ -125,6 +132,26 @@ function sendLightState() {
   });
 }
 
+function sendPrintState() {
+  DeskThing.send({
+    type: "print_state",
+    payload: { state: printState, available: !!printerSerial && printStateKnown },
+  });
+}
+
+// Bambu's gcode_state values → our normalized states.
+function mapGcodeState(raw: string): PrintState {
+  switch (raw?.toUpperCase()) {
+    case "IDLE": return "idle";
+    case "PREPARE": return "preparing";
+    case "RUNNING": return "printing";
+    case "PAUSE": return "paused";
+    case "FINISH": return "finished";
+    case "FAILED": return "failed";
+    default: return "unknown";
+  }
+}
+
 function disconnectMqtt() {
   if (mqttClient) {
     try { mqttClient.end(true); } catch { /* ignore */ }
@@ -132,7 +159,9 @@ function disconnectMqtt() {
   }
   printerSerial = null;
   lightKnown = false;
+  printStateKnown = false;
   sendLightState();
+  sendPrintState();
 }
 
 function connectMqtt(ip: string, code: string) {
@@ -174,6 +203,15 @@ function connectMqtt(ip: string, code: string) {
           sendLightState();
         }
       }
+      const gcodeState = obj?.print?.gcode_state;
+      if (typeof gcodeState === "string") {
+        const next = mapGcodeState(gcodeState);
+        if (next !== printState || !printStateKnown) {
+          printState = next;
+          printStateKnown = true;
+          sendPrintState();
+        }
+      }
     } catch { /* non-JSON payload, ignore */ }
   });
 
@@ -186,6 +224,31 @@ function connectMqtt(ip: string, code: string) {
   });
 
   mqttClient = c;
+}
+
+function publishPrintCommand(command: PrintCommand) {
+  if (!mqttClient || !printerSerial) {
+    console.warn("[bamboo] mqtt: cannot send print command — not connected or serial unknown");
+    return;
+  }
+  const payload = JSON.stringify({
+    print: {
+      sequence_id: String(sequenceId++),
+      command,
+      param: "",
+    },
+  });
+  const topic = `device/${printerSerial}/request`;
+  mqttClient.publish(topic, payload, { qos: 0 }, (err) => {
+    if (err) console.warn(`[bamboo] mqtt print ${command} failed: ${err.message}`);
+    else console.log(`[bamboo] mqtt: print ${command} sent`);
+  });
+  // Optimistic local state update — the printer's report will correct us if wrong.
+  if (command === "pause") printState = "paused";
+  else if (command === "resume") printState = "printing";
+  else if (command === "stop") printState = "idle";
+  printStateKnown = true;
+  sendPrintState();
 }
 
 function publishLight(on: boolean) {
@@ -384,6 +447,7 @@ DeskThing.on("start_feed", () => {
   resetWatchdog();
   if (latestFrame) DeskThing.send({ type: "frame", payload: latestFrame });
   sendLightState();
+  sendPrintState();
   if (!grabbing && currentUrl) runLoop();
 });
 
@@ -401,4 +465,11 @@ DeskThing.on("request_frame", () => {
 DeskThing.on("set_light", (data) => {
   const on = !!data?.payload?.on;
   publishLight(on);
+});
+
+DeskThing.on("set_print_state", (data) => {
+  const cmd = data?.payload?.command;
+  if (cmd === "pause" || cmd === "resume" || cmd === "stop") {
+    publishPrintCommand(cmd);
+  }
 });
