@@ -1,0 +1,63 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Resolve version
+        id: version
+        run: |
+          # Use the manifest's version — it's what names the built zip and what DeskThing reads.
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION=$(node -p "require('./deskthing/manifest.json').version")
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Releasing v$VERSION"
+
+      - name: Verify package.json and manifest.json agree
+        run: |
+          PKG=$(node -p "require('./package.json').version")
+          MAN=$(node -p "require('./deskthing/manifest.json').version")
+          if [ "$PKG" != "$MAN" ]; then
+            echo "::error::Version mismatch — package.json=$PKG, manifest.json=$MAN"
+            exit 1
+          fi
+
+      - name: Build
+        run: npm run build
+
+      - name: Create or update GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: ${{ steps.version.outputs.tag }}
+          files: |
+            dist/bamboo-labs-viewer-v*.zip
+            dist/latest.json
+          generate_release_notes: true
+          make_latest: 'true'

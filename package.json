@@ -1,0 +1,44 @@
+{
+  "name": "bamboo-labs-viewer",
+  "private": true,
+  "version": "0.12.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/JonnyDeates/desk-thing-bamboo-labs"
+  },
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev:vite": "vite",
+    "dev": "npx @deskthing/cli dev --vite",
+    "build": "npx @deskthing/cli package",
+    "lint": "eslint .",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@deskthing/client": "latest",
+    "@deskthing/server": "latest",
+    "autoprefixer": "^10.4.21",
+    "mqtt": "^5.10.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@deskthing/cli": "latest",
+    "@deskthing/types": "latest",
+    "@eslint/js": "^9.9.0",
+    "@types/node": "^22.10.7",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "esbuild": "^0.19.2",
+    "eslint": "^9.9.0",
+    "eslint-plugin-react-hooks": "^5.1.0-rc.0",
+    "eslint-plugin-react-refresh": "^0.4.9",
+    "tailwindcss": "^3.4.10",
+    "tsx": "^4.23.15",
+    "typescript": "^5.5.3",
+    "typescript-eslint": "^8.0.1",
+    "vite": "^5.4.15"
+  }
+}
